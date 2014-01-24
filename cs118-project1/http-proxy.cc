@@ -9,13 +9,17 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <pthread.h>
 
+#include "compat.h"
 
 using namespace std;
 
-#define SERVER_PORT "14886"
+#define SERVER_PORT "14887" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20
+#define BUFFER_SIZE 1024
 
+// Handling the the user request should be done here
 int create_server_listener (const char* port_num)
 {
     struct addrinfo hints;
@@ -24,8 +28,8 @@ int create_server_listener (const char* port_num)
     memset(&hints, 0, sizeof(hints));  // Make sure struct is empty
 
     // Set hints structure
-    hints.ai_family = AF_INET;       // Allows IPv4
-    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_family = AF_INET;         // Allows IPv4
+    hints.ai_socktype = SOCK_STREAM;   // TCP stream sockets
     hints.ai_flags = AI_PASSIVE;       // Automatic fill in for IP
 
     if (getaddrinfo(NULL, port_num, &hints, &res) != 0)
@@ -51,8 +55,6 @@ int create_server_listener (const char* port_num)
         fprintf(stderr, "Failed to bind socket\n");
         return -1;
     }
-    //cout < "Listening on address: " << res->ai_addr->s_addr << endl;
-    cout << "began listening...\n";
 
     // Setup the listener
     if (listen(listen_socket, MAX_CONNECTIONS))
@@ -78,11 +80,20 @@ int main (int argc, char *argv[])
     if (listen_socket < 0)
         return -1;
 
+    cout << "Server listening on port " << SERVER_PORT << endl;
+
     while(1)
     {
-        continue;
-    }
 
+        struct sockaddr_storage connection_addr;
+        socklen_t addr_size = sizeof(connection_addr);
+
+        int new_connection = accept(listen_socket, (struct sockaddr *) &connection_addr, &addr_size);
+
+        cout << "Connected to: " << new_connection << endl;
+        
+
+    }
 
 
     return 0;
