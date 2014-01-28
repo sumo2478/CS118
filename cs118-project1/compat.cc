@@ -7,6 +7,8 @@
 #endif
 #include <string.h>
 
+//This is a comment
+
 /* Return the first occurrence of NEEDLE in HAYSTACK.  */
 void *
 memmem (const void *haystack, size_t haystack_len, const void *needle,
