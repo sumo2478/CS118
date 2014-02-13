@@ -13,7 +13,8 @@
 
 #include "compat.h"
 #include "http-headers.h"
-
+#include "http-response.h"
+#include "http-request.h"
 using namespace std;
 
 #define SERVER_PORT "14886" // TODO: Change to 14886
@@ -26,7 +27,7 @@ typedef struct
     int socket_fd; // File descriptor for the socket
 }thread_data_t;
 
-void make_request(HttpRequest* request)
+HttpResponse make_request(HttpRequest* request)
 {
     int status;
     int s;
@@ -35,24 +36,31 @@ void make_request(HttpRequest* request)
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-    int l= request->GetTotalLength()
+    int l= request->GetTotalLength();
     char *req_string=new char[l];
     request->FormatRequest(req_string);
     
     // get ready to connect
-    status = getaddrinfo(request->GetHost(), request->GetPort(), &hints, &servinfo);
-    s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    connect(sockfd, res->ai_addr, res->ai_addrlen);
-    send(s, request_string, l, 0);
+    char p[sizeof(short unsigned int)];
+    short unsigned int temp= request->GetPort();
+    memcpy ( p, &temp, sizeof(short unsigned int) );
+    status = getaddrinfo(request->GetHost().c_str(), p, &hints, &servinfo);
+    s = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
+    connect(s, servinfo->ai_addr, servinfo->ai_addrlen);
+    send(s, req_string, l, 0);
     
     string response_data;
     while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
     {
         char buf[BUFFER_SIZE];
-        read(socket_fd, buf, sizeof(buf));
+        read(s, buf, sizeof(buf));
         response_data.append(buf);
         memset(buf, 0, sizeof(buf));
     }
+    
+    HttpResponse resp;
+    resp.ParseResponse(response_data.c_str(), response_data.length());
+    return resp;
 
     
     
