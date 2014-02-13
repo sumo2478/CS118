@@ -12,7 +12,7 @@
 #include <pthread.h>
 
 #include "compat.h"
-#include "http-headers.h"
+#include "http-request.h"
 
 using namespace std;
 
@@ -31,32 +31,42 @@ void* handle_connection(void* p)
     cout << "Handling connection\n";
 
     thread_data_t* args = (thread_data_t*) p;
-    string request_data;
 
-    // Read in data until there are two new lines in the buffer
-    while (memmem(request_data.c_str(), request_data.length(), "\r\n\r\n", 4) == NULL)
-    {
-        char buf[BUFFER_SIZE];
-        read(args->socket_fd, buf, sizeof(buf));
-        request_data.append(buf);
-        memset(buf, 0, sizeof(buf));
+    while(1) {
+        
+        string request_data;
+
+        // Read in data until there are two new lines in the buffer
+        while (memmem(request_data.c_str(), request_data.length(), "\r\n\r\n", 4) == NULL)
+        {
+            char buf[BUFFER_SIZE];
+            read(args->socket_fd, buf, sizeof(buf));
+            request_data.append(buf);
+            memset(buf, 0, sizeof(buf));
+        }
+
+        cout << "Read in data: "<< request_data << endl;
+
+        // Obtain the HTTP header from the request_data
+        HttpRequest request;
+        try
+        {
+            request.ParseRequest(request_data.c_str(), request_data.length());
+        }catch (ParseException err)
+        {
+            cout << "Header parse exception: " << err.what() << endl;
+            
+            string error_exception = "404 Invalid Request\n";
+
+            if (strcmp("Request is not GET", err.what()) == 0)
+                error_exception = "501 Not Implemented\n";
+
+
+            write(args->socket_fd, error_exception.c_str(), error_exception.length());
+            break;
+        }
     }
 
-    cout << "Read in data: "<< request_data << endl;
-
-    // Obtain the HTTP header from the request_data
-    HttpHeaders header;
-    try
-    {
-        header.ParseHeaders(request_data.c_str(), request_data.length());
-    }catch (ParseException err)
-    {
-        cout << "Header parse exception: " << err.what() << endl;
-        
-        string s = "404 Invalid Request\n";
-        write(args->socket_fd, s.c_str(), s.length());
-    }
-        
     cout << "Exiting" << endl;
 
     // Close the socket and exit the thread
