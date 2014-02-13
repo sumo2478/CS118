@@ -26,38 +26,6 @@ typedef struct
     int socket_fd; // File descriptor for the socket
 }thread_data_t;
 
-void make_request(HttpRequest* request)
-{
-    int status;
-    int s;
-    struct addrinfo hints;
-    struct addrinfo *servinfo;  // will point to the results
-    memset(&hints, 0, sizeof hints); // make sure the struct is empty
-    hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-    int l= request->GetTotalLength()
-    char *req_string=new char[l];
-    request->FormatRequest(req_string);
-    
-    // get ready to connect
-    status = getaddrinfo(request->GetHost(), request->GetPort(), &hints, &servinfo);
-    s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    connect(sockfd, res->ai_addr, res->ai_addrlen);
-    send(s, request_string, l, 0);
-    
-    string response_data;
-    while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
-    {
-        char buf[BUFFER_SIZE];
-        read(socket_fd, buf, sizeof(buf));
-        response_data.append(buf);
-        memset(buf, 0, sizeof(buf));
-    }
-
-    
-    
-}
-
 void* handle_connection(void* p)
 {
     cout << "Handling connection\n";
