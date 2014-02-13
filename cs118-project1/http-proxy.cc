@@ -12,20 +12,24 @@
 #include <pthread.h>
 
 #include "compat.h"
+
 #include "http-headers.h"
 #include "http-response.h"
 #include "http-request.h"
+
 using namespace std;
 
 #define SERVER_PORT "14886" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
+#define TIMEOUT 30          // TODO: Change to 30 Timeout value for receiving requests from client
 
 // Structure that is passed into the thread
 typedef struct 
 {
     int socket_fd; // File descriptor for the socket
 }thread_data_t;
+
 
 HttpResponse make_request(HttpRequest* request)
 {
@@ -71,32 +75,64 @@ void* handle_connection(void* p)
     cout << "Handling connection\n";
 
     thread_data_t* args = (thread_data_t*) p;
-    string request_data;
 
-    // Read in data until there are two new lines in the buffer
-    while (memmem(request_data.c_str(), request_data.length(), "\r\n\r\n", 4) == NULL)
-    {
-        char buf[BUFFER_SIZE];
-        read(args->socket_fd, buf, sizeof(buf));
-        request_data.append(buf);
-        memset(buf, 0, sizeof(buf));
+
+
+    while(1) {
+        
+        string request_data;
+        
+        // Read in data until there are two new lines in the buffer
+        while (memmem(request_data.c_str(), request_data.length(), "\r\n\r\n", 4) == NULL)
+        {
+            struct timeval timeout; // Timeout value
+            timeout.tv_sec = TIMEOUT;
+            timeout.tv_usec = 0;
+
+            fd_set read_fds;
+            FD_ZERO(&read_fds);
+            FD_SET(args->socket_fd, &read_fds);
+
+            // Wait until there is data inside the read pipe
+            // If the timer timesout then close connection
+            if (select(args->socket_fd+1, &read_fds, NULL, NULL, &timeout))
+            {
+                char buf[BUFFER_SIZE];
+                read(args->socket_fd, buf, sizeof(buf));
+                request_data.append(buf);
+                memset(buf, 0, sizeof(buf));
+            }else{
+                string timeout = "Timeout Error\n";
+                cout << timeout;
+                write(args->socket_fd, timeout.c_str(), timeout.length());
+                close(args->socket_fd);
+                pthread_exit(NULL);
+            }
+
+        }
+
+        cout << "Read in data: "<< request_data << endl;
+
+        // Obtain the HTTP header from the request_data
+        HttpRequest request;
+        try
+        {
+            request.ParseRequest(request_data.c_str(), request_data.length());
+        }catch (ParseException err)
+        {
+            cout << "Header parse exception: " << err.what() << endl;
+            
+            string error_exception = "404 Invalid Request\n";
+
+            if (strcmp("Request is not GET", err.what()) == 0)
+                error_exception = "501 Not Implemented\n";
+
+
+            write(args->socket_fd, error_exception.c_str(), error_exception.length());
+            break;
+        }
     }
 
-    cout << "Read in data: "<< request_data << endl;
-
-    // Obtain the HTTP header from the request_data
-    HttpHeaders header;
-    try
-    {
-        header.ParseHeaders(request_data.c_str(), request_data.length());
-    }catch (ParseException err)
-    {
-        cout << "Header parse exception: " << err.what() << endl;
-        
-        string s = "404 Invalid Request\n";
-        write(args->socket_fd, s.c_str(), s.length());
-    }
-        
     cout << "Exiting" << endl;
 
     // Close the socket and exit the thread
