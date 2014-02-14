@@ -21,7 +21,7 @@
 
 using namespace std;
 
-#define SERVER_PORT "14886" // TODO: Change to 14886
+#define SERVER_PORT "14887" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 30          // TODO: Change to 30 Timeout value for receiving requests from client
@@ -33,7 +33,7 @@ typedef struct
 }thread_data_t;
 
 
-HttpResponse make_request(HttpRequest* request)
+string make_request(HttpRequest* request)
 {
     int status;
     int s;
@@ -58,18 +58,16 @@ HttpResponse make_request(HttpRequest* request)
     send(s, req_string, l, 0);
     string response_data;
 
-
+    char buf[BUFFER_SIZE];
     while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
     {
-            char buf[BUFFER_SIZE];
-            read(s, buf, sizeof(buf));
-            response_data.append(buf);
-            memset(buf, 0, sizeof(buf));
+        
+        memset(buf, 0, sizeof(buf));
+        read(s, buf, sizeof(buf));
+        response_data.append(buf);         
     }
 
-    HttpResponse resp;
-    resp.ParseResponse(response_data.c_str(), response_data.length());
-    return resp;
+    return response_data;
     
 }
 
@@ -79,7 +77,7 @@ void* handle_connection(void* p)
 
     thread_data_t* args = (thread_data_t*) p;
 
-
+    bool persist = true;
 
     while(1) {
         
@@ -95,7 +93,7 @@ void* handle_connection(void* p)
             fd_set read_fds;
             FD_ZERO(&read_fds);
             FD_SET(args->socket_fd, &read_fds);
-
+            
             // Wait until there is data inside the read pipe
             // If the timer timesout then close connection
             if (select(args->socket_fd+1, &read_fds, NULL, NULL, &timeout))
@@ -104,6 +102,7 @@ void* handle_connection(void* p)
                 read(args->socket_fd, buf, sizeof(buf));
                 request_data.append(buf);
                 memset(buf, 0, sizeof(buf));
+        
             }else{
                 string timeout = "Timeout Error\n";
                 cout << timeout;
@@ -111,10 +110,8 @@ void* handle_connection(void* p)
                 close(args->socket_fd);
                 pthread_exit(NULL);
             }
-
+            
         }
-
-        cout << "Read in data: "<< request_data << endl;
 
         // Obtain the HTTP header from the request_data
         HttpRequest request;
@@ -122,12 +119,13 @@ void* handle_connection(void* p)
         {
             request.ParseRequest(request_data.c_str(), request_data.length());
             
-            HttpResponse response = make_request(&request);
+            if (strcmp(request.FindHeader("Connection").c_str(), "close"))
+                persist = false;
 
-            char* response_str = new char[response.GetTotalLength()];
-            response.FormatResponse(response_str);
-
-            write(args->socket_fd, response_str, response.GetTotalLength());
+            string response_str = make_request(&request);
+        
+            write(args->socket_fd, response_str.c_str(), response_str.length());
+            
         }catch (ParseException err)
         {
             cout << "Header parse exception: " << err.what() << endl;
@@ -141,6 +139,9 @@ void* handle_connection(void* p)
             write(args->socket_fd, error_exception.c_str(), error_exception.length());
             break;
         }
+
+        if (!persist)
+            break;
     }
 
     cout << "Exiting" << endl;

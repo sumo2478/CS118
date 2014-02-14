@@ -15,6 +15,7 @@ class bcolors:
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
+    PASS = '\033[92m'
 
     def disable(self):
         self.HEADER = ''
@@ -23,6 +24,8 @@ class bcolors:
         self.WARNING = ''
         self.FAIL = ''
         self.ENDC = ''
+        self.PASS = ''
+
 
 class TestHandler(BaseHTTPRequestHandler):
 
@@ -84,7 +87,7 @@ class ClientThread (Thread):
             conn.request("GET", self.url)
             resp = conn.getresponse()
             rdata = resp.read()
-
+            print "Received: " + rdata
             if rdata == cdata:
                 self.result = True
             self.data = rdata
@@ -175,6 +178,8 @@ if client1.result:
     print "Basic object fetching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]" 
 else: 
     print "Basic object fetching: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]" 
+
+# time.sleep(10)
 
 client2 = ClientPersistThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/basic", "./basic", "http://127.0.0.1:" + sport1 + "/basic2", "./basic2")
 client2.start()
