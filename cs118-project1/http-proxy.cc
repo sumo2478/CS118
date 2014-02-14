@@ -17,6 +17,8 @@
 #include "http-response.h"
 #include "http-request.h"
 
+#include <sstream>
+
 using namespace std;
 
 #define SERVER_PORT "14886" // TODO: Change to 14886
@@ -43,30 +45,31 @@ HttpResponse make_request(HttpRequest* request)
     int l= request->GetTotalLength();
     char *req_string=new char[l];
     request->FormatRequest(req_string);
-    
-    // get ready to connect
-    char p[sizeof(short unsigned int)];
-    short unsigned int temp= request->GetPort();
-    memcpy ( p, &temp, sizeof(short unsigned int) );
-    status = getaddrinfo(request->GetHost().c_str(), p, &hints, &servinfo);
+
+    // Obtain port number
+    stringstream ss;
+    ss << request->GetPort();
+    string port_num = ss.str();
+
+    status = getaddrinfo(request->GetHost().c_str(), port_num.c_str(), &hints, &servinfo);
+
     s = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
     connect(s, servinfo->ai_addr, servinfo->ai_addrlen);
     send(s, req_string, l, 0);
-    
     string response_data;
+
+
     while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
     {
-        char buf[BUFFER_SIZE];
-        read(s, buf, sizeof(buf));
-        response_data.append(buf);
-        memset(buf, 0, sizeof(buf));
+            char buf[BUFFER_SIZE];
+            read(s, buf, sizeof(buf));
+            response_data.append(buf);
+            memset(buf, 0, sizeof(buf));
     }
-    
+
     HttpResponse resp;
     resp.ParseResponse(response_data.c_str(), response_data.length());
     return resp;
-
-    
     
 }
 
@@ -118,6 +121,13 @@ void* handle_connection(void* p)
         try
         {
             request.ParseRequest(request_data.c_str(), request_data.length());
+            
+            HttpResponse response = make_request(&request);
+
+            char* response_str = new char[response.GetTotalLength()];
+            response.FormatResponse(response_str);
+
+            write(args->socket_fd, response_str, response.GetTotalLength());
         }catch (ParseException err)
         {
             cout << "Header parse exception: " << err.what() << endl;
