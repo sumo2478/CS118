@@ -25,6 +25,7 @@ using namespace std;
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 1          // TODO: Change to 30 Timeout value for receiving requests from client
+#define REMOTE_TIMEOUT 10
 
 // Structure that is passed into the thread
 typedef struct 
@@ -62,19 +63,83 @@ string make_request(HttpRequest* request)
     send(s, req_string, l, 0);
     string response_data;
 
+
+    // Retrieve the HTTP header
     while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
     {
-        char buf[BUFFER_SIZE];
-        memset(buf, 0, sizeof(buf));
-        int i = recv(s, buf, sizeof(buf), 0);
-        response_data.append(buf, i);         
-        // cout << buf;
+        struct timeval timeout; // Timeout value
+        timeout.tv_sec = REMOTE_TIMEOUT;
+        timeout.tv_usec = 0;
+
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(s, &read_fds);
+
+        // Wait until there is data inside the read pipe
+        // If the timer timesout then close connection
+        if (select(s+1, &read_fds, NULL, NULL, &timeout))
+        {        
+            char buf[BUFFER_SIZE];
+            memset(buf, 0, sizeof(buf));
+            int i = recv(s, buf, sizeof(buf), 0);
+            response_data.append(buf, i);        
+    
+        }else{
+            cout << "Timeout" << endl;
+            break;
+        }
+
+    }
+
+    // If there was any body code that was placed in the buffer add it to current body
+    string body = response_data.substr(response_data.find("\r\n\r\n"));
+
+    HttpResponse response;
+    response.ParseResponse(response_data.c_str(), response_data.length());
+
+    // Determine the content length
+    stringstream ss_body(response.FindHeader("Content-Length"));
+    int content_length;
+    ss_body >> content_length;
+
+    content_length -= body.length();
+    content_length += 4;
+
+    // Retrieve the rest of the body
+    while (content_length > 0)
+    {
+        struct timeval timeout; // Timeout value
+        timeout.tv_sec = REMOTE_TIMEOUT;
+        timeout.tv_usec = 0;
+
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(s, &read_fds);
+
+        // Wait until there is data inside the read pipe
+        // If the timer timesout then close connection
+        if (select(s+1, &read_fds, NULL, NULL, &timeout))
+        {        
+            char buf[BUFFER_SIZE];
+            memset(buf, 0, sizeof(buf));
+            int i = recv(s, buf, content_length, 0);
+            body.append(buf, i);    
+            content_length -= i;    
+    
+        }else{
+            cout << "Timeout" << endl;
+            break;
+        }
     }
 
     close(s);
     delete[] req_string;
 
-    cout << "Response: " << response_data;
+
+    // Append the body to the header
+    response_data = response_data.substr(0, response_data.find("\r\n\r\n"));
+    response_data.append(body);
+
     return response_data;
     
 }
@@ -140,7 +205,6 @@ void* handle_connection(void* p)
             if (strcmp(request.FindHeader("Connection").c_str(), "close") == 0)
             {
                 persist = false;
-                cout << "Connection: " << request.FindHeader("Connection") << endl;
             }
             string response_str = make_request(&request);
         

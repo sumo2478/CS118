@@ -181,49 +181,49 @@ else:
 
 # time.sleep(10)
 
-# client2 = ClientPersistThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/basic", "./basic", "http://127.0.0.1:" + sport1 + "/basic2", "./basic2")
-# client2.start()
-# client2.join()
-# if client2.result:
-#     print "Persistent Connection: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
-# else:
-#     print "Persistent Connection: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
+client2 = ClientPersistThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/basic", "./basic", "http://127.0.0.1:" + sport1 + "/basic2", "./basic2")
+client2.start()
+client2.join()
+if client2.result:
+    print "Persistent Connection: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
+else:
+    print "Persistent Connection: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
 
-# client3 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+ sport1 +"/basic3", "./basic3")
-# client4 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+ sport2 +"/basic3", "./basic3")
+client3 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+ sport1 +"/basic3", "./basic3")
+client4 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+ sport2 +"/basic3", "./basic3")
 
-# start = time.time()
-# client3.start()
-# client4.start()
+start = time.time()
+client3.start()
+client4.start()
  
-# client3.join()
-# client4.join()
-# end = time.time()
+client3.join()
+client4.join()
+end = time.time()
 
-# r = False
-# datafile = open("./basic3", "r")
-# cdata = datafile.read()
-# if(end - start) < 4 and client3.data == cdata and client4.data == cdata:
-#     r = True
-# if r:
-#     print "Concurrent Connection: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
-# else:
-#     print "Concurrent Connection: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
+r = False
+datafile = open("./basic3", "r")
+cdata = datafile.read()
+if(end - start) < 4 and client3.data == cdata and client4.data == cdata:
+    r = True
+if r:
+    print "Concurrent Connection: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
+else:
+    print "Concurrent Connection: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
 
-# client5 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+sport1+"/cacheTest", "./basic")
-# client5.start()
-# client5.join()
-# time.sleep(2)
-# client6 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+sport1+"/cacheTest", "./basic")
-# client6.start()
-# client6.join()
-# r = False
-# if client5.data == client6.data and client5.data != "":
-#     r = True
-# if r:
-#     print "Caching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
-# else:
-#     print "Caching: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
+client5 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+sport1+"/cacheTest", "./basic")
+client5.start()
+client5.join()
+time.sleep(2)
+client6 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+sport1+"/cacheTest", "./basic")
+client6.start()
+client6.join()
+r = False
+if client5.data == client6.data and client5.data != "":
+    r = True
+if r:
+    print "Caching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
+else:
+    print "Caching: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
 
 server1.server.shutdown()
 server2.server.shutdown()
