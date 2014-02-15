@@ -21,10 +21,10 @@
 
 using namespace std;
 
-#define SERVER_PORT "14876" // TODO: Change to 14886
+#define SERVER_PORT "14877" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
-#define TIMEOUT 30          // TODO: Change to 30 Timeout value for receiving requests from client
+#define TIMEOUT 1          // TODO: Change to 30 Timeout value for receiving requests from client
 
 // Structure that is passed into the thread
 typedef struct 
@@ -68,11 +68,13 @@ string make_request(HttpRequest* request)
         memset(buf, 0, sizeof(buf));
         int i = recv(s, buf, sizeof(buf), 0);
         response_data.append(buf, i);         
-        cout << buf;
+        // cout << buf;
     }
 
     close(s);
     delete[] req_string;
+
+    cout << "Response: " << response_data;
     return response_data;
     
 }
@@ -86,12 +88,15 @@ void* handle_connection(void* p)
     bool persist = true;
 
     while(1) {
-        
+
+        cout << "Serving Request" << endl;
         string request_data;
         char buf[BUFFER_SIZE];
+
         // Read in data until there are two new lines in the buffer
         while (memmem(request_data.c_str(), request_data.length(), "\r\n\r\n", 4) == NULL)
         {
+            
             struct timeval timeout; // Timeout value
             timeout.tv_sec = TIMEOUT;
             timeout.tv_usec = 0;
@@ -99,14 +104,21 @@ void* handle_connection(void* p)
             fd_set read_fds;
             FD_ZERO(&read_fds);
             FD_SET(args->socket_fd, &read_fds);
-            
+
             // Wait until there is data inside the read pipe
             // If the timer timesout then close connection
             if (select(args->socket_fd+1, &read_fds, NULL, NULL, &timeout))
-            {                
-                int i = read(args->socket_fd, buf, sizeof(buf)-1);
-                buf[i] = '\0';
-                request_data.append(buf);
+            {        
+                int i = recv(args->socket_fd, buf, sizeof(buf), 0);
+
+                if(strcmp(buf, "") == 0)
+                {
+                    cout << "Exiting\n";
+                    close(args->socket_fd);
+                    pthread_exit(NULL);
+                }
+
+                request_data.append(buf, i);
                 memset(buf, 0, sizeof(buf));
         
             }else{
@@ -125,9 +137,11 @@ void* handle_connection(void* p)
         {
             request.ParseRequest(request_data.c_str(), request_data.length());
             
-            if (strcmp(request.FindHeader("Connection").c_str(), "close"))
+            if (strcmp(request.FindHeader("Connection").c_str(), "close") == 0)
+            {
                 persist = false;
-
+                cout << "Connection: " << request.FindHeader("Connection") << endl;
+            }
             string response_str = make_request(&request);
         
             // cout << "Responding with: " << response_str;
@@ -147,7 +161,10 @@ void* handle_connection(void* p)
         }
 
         if (!persist)
-            break;
+        {
+            cout << "Connection closing...\n";
+            break;            
+        }
     }
 
     cout << "Exiting" << endl;
@@ -238,7 +255,6 @@ int main (int argc, char *argv[])
 
             pthread_create(&thread, NULL, handle_connection, (void*) p);
             pthread_detach(thread);
-            delete p;
         }
 
     }
