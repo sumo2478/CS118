@@ -21,7 +21,7 @@
 
 using namespace std;
 
-#define SERVER_PORT "14887" // TODO: Change to 14886
+#define SERVER_PORT "14876" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 30          // TODO: Change to 30 Timeout value for receiving requests from client
@@ -38,13 +38,17 @@ string make_request(HttpRequest* request)
     int status;
     int s;
     struct addrinfo hints;
-    struct addrinfo *servinfo;  // will point to the results
+    struct addrinfo *servinfo;       // will point to the results
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-    int l= request->GetTotalLength();
-    char *req_string=new char[l];
+
+    size_t l = request->GetTotalLength();
+
+    char* req_string = new char[l];
     request->FormatRequest(req_string);
+
+    cout << "Received request: " << req_string;
 
     // Obtain port number
     stringstream ss;
@@ -58,22 +62,24 @@ string make_request(HttpRequest* request)
     send(s, req_string, l, 0);
     string response_data;
 
-    char buf[BUFFER_SIZE];
     while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
     {
-        
+        char buf[BUFFER_SIZE];
         memset(buf, 0, sizeof(buf));
-        read(s, buf, sizeof(buf));
-        response_data.append(buf);         
+        int i = recv(s, buf, sizeof(buf), 0);
+        response_data.append(buf, i);         
+        cout << buf;
     }
 
+    close(s);
+    delete[] req_string;
     return response_data;
     
 }
 
 void* handle_connection(void* p)
 {
-    cout << "Handling connection\n";
+    cout << "Handling connection" << endl;
 
     thread_data_t* args = (thread_data_t*) p;
 
@@ -82,7 +88,7 @@ void* handle_connection(void* p)
     while(1) {
         
         string request_data;
-        
+        char buf[BUFFER_SIZE];
         // Read in data until there are two new lines in the buffer
         while (memmem(request_data.c_str(), request_data.length(), "\r\n\r\n", 4) == NULL)
         {
@@ -97,9 +103,9 @@ void* handle_connection(void* p)
             // Wait until there is data inside the read pipe
             // If the timer timesout then close connection
             if (select(args->socket_fd+1, &read_fds, NULL, NULL, &timeout))
-            {
-                char buf[BUFFER_SIZE];
-                read(args->socket_fd, buf, sizeof(buf));
+            {                
+                int i = read(args->socket_fd, buf, sizeof(buf)-1);
+                buf[i] = '\0';
                 request_data.append(buf);
                 memset(buf, 0, sizeof(buf));
         
@@ -124,8 +130,8 @@ void* handle_connection(void* p)
 
             string response_str = make_request(&request);
         
-            write(args->socket_fd, response_str.c_str(), response_str.length());
-            
+            // cout << "Responding with: " << response_str;
+            send(args->socket_fd, response_str.c_str(), response_str.length(), 0);            
         }catch (ParseException err)
         {
             cout << "Header parse exception: " << err.what() << endl;
@@ -232,6 +238,7 @@ int main (int argc, char *argv[])
 
             pthread_create(&thread, NULL, handle_connection, (void*) p);
             pthread_detach(thread);
+            delete p;
         }
 
     }
