@@ -17,6 +17,7 @@
 
 #include <sstream>
 #include <map>
+#include <time.h>
 using namespace std;
 
 #define SERVER_PORT "14886" // TODO: Change to 14886
@@ -45,6 +46,7 @@ public:
     void store(HttpRequest* hr, string savedResponse);
     void remove(HttpRequest* hr);
     string EntryLastModified(HttpRequest * hr);
+    bool IsExpired(HttpRequest * hr);
     string EntryExpires(HttpRequest * hr);
     string ReturnStoredResponse(HttpRequest * hr);
     int size() {
@@ -102,6 +104,50 @@ string Cache::EntryLastModified(HttpRequest * hr) {
     }
     else
         return "";
+}
+
+// Time function that converts string into TM struct (for #include <time.h>)
+time_t convertTime(string timestring){
+    const char* formatString = "%a, %d %b %Y %H:%M:%S %Z";
+    struct tm tm;
+    if(strptime(timestring.c_str(), formatString, &tm) == NULL) { //There is no time string
+        return 0;
+    }
+    else{
+        tm.tm_hour = tm.tm_hour-8; // TODO: should we remove? This converts to la time
+        return mktime(&tm);
+    }
+}
+
+// Returns True if the file is expired or has no expiration date (treat as if expired)
+// Add this check when you want to see if an Cache Entry has expired or not
+bool Cache::IsExpired(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    map<string,string>::iterator it;
+    it = cacheMap.find(keyName);
+    if(it != cacheMap.end()) {
+        string raw = (*it).second;
+        HttpResponse response;
+        response.ParseResponse(raw.c_str(), raw.length());
+        string Expires = response.FindHeader("Expires");
+        time_t expire_t;
+        if(Expires != "") // Look for expire header
+        {
+            expire_t = convertTime(Expires); // convert Expires time into time tm struct for camparisons
+            time_t now = time(NULL); // Get time now
+            
+            if(difftime(expire_t, now) < 0) // If difference in time for now and time less than zero, then expired
+                return true;
+            else
+                return false;
+        }
+        else // There is no expire header so treat as if Expired
+            return true;
+    }
+    else // Item is not in the cache so treat as if Expired
+        return true;
 }
 
 string Cache::EntryExpires(HttpRequest * hr) {
