@@ -1,5 +1,3 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
-
 #include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -18,35 +16,151 @@
 #include "http-request.h"
 
 #include <sstream>
-
+#include <map>
 using namespace std;
 
-#define SERVER_PORT "14877" // TODO: Change to 14886
+#define SERVER_PORT "14886" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 1          // TODO: Change to 30 Timeout value for receiving requests from client
 #define REMOTE_TIMEOUT 10
-
+class Cache;
 // Structure that is passed into the thread
 typedef struct 
 {
     int socket_fd; // File descriptor for the socket
+    Cache* cache_p;
 }thread_data_t;
 
+pthread_mutex_t cache_mutex;
+// Need:
+// pthread_mutex_init(&cache_mutex, NULL);
+// pthread_mutex_lock(&cache_mutex);
+// pthread_mutex_unlock(&cache_mutex);
 
-string make_request(HttpRequest* request)
+class Cache
+{
+public:
+    bool CacheEntryExists(HttpRequest * hr);
+    void store(HttpRequest* hr, string savedResponse);
+    void remove(HttpRequest* hr);
+    string EntryLastModified(HttpRequest * hr);
+    string EntryExpires(HttpRequest * hr);
+    string ReturnStoredResponse(HttpRequest * hr);
+    int size() {
+        return cacheMap.size();
+    }
+private:
+    map<string,string> cacheMap;
+};
+
+// Returns true if proxy has visited the server before
+bool Cache::CacheEntryExists(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    map<string,string>::iterator it;
+    it = cacheMap.find(keyName);
+    if(it == cacheMap.end())
+        return false;
+    else
+        return true;
+}
+
+// Updates the map with the new HTTP response under the key
+void Cache::store(HttpRequest * hr, string savedResponse) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    cacheMap.erase(keyName);
+    cacheMap.insert(pair<string,string>(keyName, savedResponse));
+}
+
+// Deletes the saved cache data (FOR USE LATER IN Expired cache)
+// Expiration date needs to be implemented
+void Cache::remove(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    cacheMap.erase(keyName);
+}
+
+// Returns the string of the last-modified header tag
+// in the saved HTTP response
+string Cache::EntryLastModified(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    map<string,string>::iterator it;
+    it = cacheMap.find(keyName);
+    if(it != cacheMap.end()) {
+        string raw = (*it).second;
+        HttpResponse response;
+        response.ParseResponse(raw.c_str(), raw.length());
+        string last_modified = response.FindHeader("Last-Modified");
+        return last_modified;
+    }
+    else
+        return "";
+}
+
+string Cache::EntryExpires(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    map<string,string>::iterator it;
+    it = cacheMap.find(keyName);
+    if(it != cacheMap.end()) {
+        string raw = (*it).second;
+        HttpResponse response;
+        response.ParseResponse(raw.c_str(), raw.length());
+        string Expires = response.FindHeader("Expires");
+        return Expires;
+    }
+    else
+        return "";
+}
+
+// Returns the string of the HTTP response
+string Cache::ReturnStoredResponse(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    map<string,string>::iterator it;
+    it = cacheMap.find(keyName);
+    if(it != cacheMap.end()) {
+        return (*it).second;
+    }
+    else
+        return "";
+}
+
+
+
+
+string make_request(HttpRequest* request, Cache* cache)
 {
     int status;
     int s;
     struct addrinfo hints;
     struct addrinfo *servinfo;       // will point to the results
+    bool requestCached= false;
+    
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-
+    
+    requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached b4
+    
+    if(requestCached)
+    {
+        request->AddHeader("If-Modified-Since", cache->EntryLastModified(request));
+    }
+    
     size_t l = request->GetTotalLength();
 
     char* req_string = new char[l];
+
     request->FormatRequest(req_string);
 
     cout << "Received request: " << req_string;
@@ -67,6 +181,7 @@ string make_request(HttpRequest* request)
     // Retrieve the HTTP header
     while (memmem(response_data.c_str(), response_data.length(), "\r\n\r\n", 4) == NULL)
     {
+        
         struct timeval timeout; // Timeout value
         timeout.tv_sec = REMOTE_TIMEOUT;
         timeout.tv_usec = 0;
@@ -91,12 +206,18 @@ string make_request(HttpRequest* request)
 
     }
 
-    // If there was any body code that was placed in the buffer add it to current body
-    string body = response_data.substr(response_data.find("\r\n\r\n"));
+   
 
     HttpResponse response;
     response.ParseResponse(response_data.c_str(), response_data.length());
-
+    cout<<"THE RESPONSE STATUS CODE IS"<<response.GetStatusCode()<<"!!!!";
+    bool cacheIt= false;//decide whether response needs to be cached
+    
+    cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
+    
+    // If there was any body code that was placed in the buffer add it to current body
+    string body = response_data.substr(response_data.find("\r\n\r\n"));
+    
     // Determine the content length
     stringstream ss_body(response.FindHeader("Content-Length"));
     int content_length;
@@ -135,12 +256,32 @@ string make_request(HttpRequest* request)
     close(s);
     delete[] req_string;
 
+    if(!cacheIt || (requestCached))
+    {
+        
+        cout<<"returns cached response";
+        cout<<"---------------------------------------------\n";
+        cout<< cache->ReturnStoredResponse(request);
+        cout<<"-------------------------------------------";
+        return cache->ReturnStoredResponse(request);//simply return stored response from the cache
+        
+    }
 
     // Append the body to the header
     response_data = response_data.substr(0, response_data.find("\r\n\r\n"));
     response_data.append(body);
-
+    
+    if (response.FindHeader("Last-Modified")!="")
+    {
+        cout<<"storing response";
+        cache->store(request, response_data);
+        
+    }
+    cout<<"---------------------------------------------\n";
+        cout<< response_data;
+        cout<<"-------------------------------------------";
     return response_data;
+    
     
 }
 
@@ -206,7 +347,7 @@ void* handle_connection(void* p)
             {
                 persist = false;
             }
-            string response_str = make_request(&request);
+            string response_str = make_request(&request,args->cache_p);
         
             // cout << "Responding with: " << response_str;
             send(args->socket_fd, response_str.c_str(), response_str.length(), 0);            
@@ -296,7 +437,7 @@ int main (int argc, char *argv[])
         return -1;
 
     cout << "Server listening on port " << SERVER_PORT << endl;
-
+    Cache* cache= new Cache;
     while(1)
     {
 
@@ -316,7 +457,7 @@ int main (int argc, char *argv[])
             pthread_t thread;
             thread_data_t* p = new thread_data_t;
             p->socket_fd = new_connection;
-
+            p->cache_p= cache;
             pthread_create(&thread, NULL, handle_connection, (void*) p);
             pthread_detach(thread);
         }
