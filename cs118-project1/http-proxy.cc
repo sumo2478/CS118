@@ -23,7 +23,7 @@ using namespace std;
 #define SERVER_PORT "14886" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
-#define TIMEOUT 1          // TODO: Change to 30 Timeout value for receiving requests from client
+#define TIMEOUT 5          // TODO: Change to 30 Timeout value for receiving requests from client
 #define REMOTE_TIMEOUT 10
 class Cache;
 // Structure that is passed into the thread
@@ -46,9 +46,10 @@ public:
     void store(HttpRequest* hr, string savedResponse);
     void remove(HttpRequest* hr);
     string EntryLastModified(HttpRequest * hr);
-    bool IsExpired(HttpRequest * hr);
-    string getValidCachedResponse(HttpRequest * hr);
+    bool isExpired(HttpRequest * hr);
+    string EntryExpires(HttpRequest * hr);
     string ReturnStoredResponse(HttpRequest * hr);
+    string getValidCachedResponse(HttpRequest * hr);
     int size() {
         return cacheMap.size();
     }
@@ -119,9 +120,9 @@ time_t convertTime(string timestring){
     }
 }
 
-// Returns True if the file is expired or has no expiration date (treat as if expired)
-// Add this check when you want to see if an Cache Entry has expired or not
-bool Cache::IsExpired(HttpRequest * hr) {
+// Return true if there's expire header and expired
+// Return false otherwise
+bool Cache::isExpired (HttpRequest * hr) {
     string hostName = hr->GetHost();
     string pathName = hr->GetPath();
     string keyName = hostName + pathName;
@@ -144,15 +145,13 @@ bool Cache::IsExpired(HttpRequest * hr) {
                 return false;
         }
         else // There is no expire header so treat as if Expired
-            return true;
+            return false;
     }
     else // Item is not in the cache so treat as if Expired
-        return true;
+        return false;
 }
 
-
-string Cache::getValidCachedResponse(HttpRequest * hr) {
-
+string Cache::EntryExpires(HttpRequest * hr) {
     string hostName = hr->GetHost();
     string pathName = hr->GetPath();
     string keyName = hostName + pathName;
@@ -185,6 +184,44 @@ string Cache::ReturnStoredResponse(HttpRequest * hr) {
 
 
 
+// ANDRE
+// Returns response data as string if not expired
+// Returns empty string if expired/hasn't been cached/no expiration date
+string Cache::getValidCachedResponse(HttpRequest * hr) {
+    string hostName = hr->GetHost();
+    string pathName = hr->GetPath();
+    string keyName = hostName + pathName;
+    map<string,string>::iterator it;
+    it = cacheMap.find(keyName);
+    if(it != cacheMap.end()) {
+        string raw = (*it).second;
+        HttpResponse response;
+        response.ParseResponse(raw.c_str(), raw.length());
+        string Expires = response.FindHeader("Expires");
+        time_t expire_t;
+        if(Expires != "") {
+            expire_t = convertTime(Expires);
+            time_t now = time(NULL);
+            // Cached Response has expired already
+            if(difftime(expire_t,now) < 0)
+                return "";
+            // Not expired, but may have been modified since
+            else {
+                return raw;
+            }
+
+        }
+        else // No expiration date so Need to conditional get
+        {
+            return "";
+        }
+    }
+    else
+        return "";
+}
+
+
+
 
 string make_request(HttpRequest* request, Cache* cache)
 {
@@ -192,28 +229,25 @@ string make_request(HttpRequest* request, Cache* cache)
     int s;
     struct addrinfo hints;
     struct addrinfo *servinfo;       // will point to the results
-    bool requestCached= false;
-    bool expired= false;
+    //bool requestCached= false;
     
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    /*
+    requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached b4
     
-    string cachedValidResponse= cache->getValidCachedResponse(request);//cache response exist and has not expired
-    if(cachedValidResponse != "")
-    {
-        cout<<"returns cached response that has not expired";
-        cout<<"---------------------------------------------\n";
-        cout<< cachedValidResponse;
-        cout<<"---------------------------------------------\n";
-        return cachedValidResponse;
-    }
-    
-    requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached before
-    expired= cache->IsExpired(request);
-    if(requestCached && !expired)
+    if(requestCached)
     {
         request->AddHeader("If-Modified-Since", cache->EntryLastModified(request));
+    }
+    */
+    string savedResponse = cache->getValidCachedResponse(request);
+    if(savedResponse != "") { // if saved there is something returned then saved response is cached data
+        return savedResponse;
+    }
+    else {
+        request->AddHeader("If-Modified-Since", cache->EntryLastModified(request)); // Do conditional get if saved response is not in cache
     }
     
     size_t l = request->GetTotalLength();
@@ -270,9 +304,9 @@ string make_request(HttpRequest* request, Cache* cache)
     HttpResponse response;
     response.ParseResponse(response_data.c_str(), response_data.length());
     cout<<"THE RESPONSE STATUS CODE IS"<<response.GetStatusCode()<<"!!!!";
-    bool cacheIt= false;//decide whether response needs to be cached
+   // bool cacheIt= false;//decide whether response needs to be cached
     
-    cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
+    //cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
     
     // If there was any body code that was placed in the buffer add it to current body
     string body = response_data.substr(response_data.find("\r\n\r\n"));
@@ -314,31 +348,31 @@ string make_request(HttpRequest* request, Cache* cache)
 
     close(s);
     delete[] req_string;
-
+/*
     if(!cacheIt || (requestCached))
     {
         
-        cout<<"returns cached response that does not have expire header";
+        cout<<"returns cached response";
         cout<<"---------------------------------------------\n";
         cout<< cache->ReturnStoredResponse(request);
-        cout<<"---------------------------------------------\n";
+        cout<<"-------------------------------------------";
         return cache->ReturnStoredResponse(request);//simply return stored response from the cache
         
     }
-
+*/
     // Append the body to the header
     response_data = response_data.substr(0, response_data.find("\r\n\r\n"));
     response_data.append(body);
     
-    if (response.FindHeader("Last-Modified")!="")
+    //if (response.FindHeader("Last-Modified")!="")
     {
-        cout<<"STORING RESPONSE: returning fresh response";
+        cout<<"storing response";
         cache->store(request, response_data);
         
     }
     cout<<"---------------------------------------------\n";
-    cout<< response_data;
-    cout<<"---------------------------------------------\n";
+        cout<< response_data;
+        cout<<"-------------------------------------------";
     return response_data;
     
     
@@ -494,7 +528,7 @@ int main (int argc, char *argv[])
 
     if (listen_socket < 0)
         return -1;
-
+    pthread_mutex_init(&cache_mutex, NULL);
     cout << "Server listening on port " << SERVER_PORT << endl;
     Cache* cache= new Cache;
     while(1)
