@@ -20,7 +20,7 @@
 #include <time.h>
 using namespace std;
 
-#define SERVER_PORT "14886" // TODO: Change to 14886
+#define SERVER_PORT "14802" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 5          // TODO: Change to 30 Timeout value for receiving requests from client
@@ -115,7 +115,7 @@ time_t convertTime(string timestring){
         return 0;
     }
     else{
-        tm.tm_hour = tm.tm_hour-8; // TODO: should we remove? This converts to la time
+        tm.tm_hour = tm.tm_hour; //-8 // TODO: should we remove? This converts to la time
         return mktime(&tm);
     }
 }
@@ -225,13 +225,12 @@ string Cache::getValidCachedResponse(HttpRequest * hr) {
 
 string make_request(HttpRequest* request, Cache* cache)
 {
+    cout << "trying to make request" << endl;
     int status;
     int s;
     struct addrinfo hints;
     struct addrinfo *servinfo;       // will point to the results
-
     //bool requestCached= false;
-
     
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
@@ -244,11 +243,13 @@ string make_request(HttpRequest* request, Cache* cache)
         request->AddHeader("If-Modified-Since", cache->EntryLastModified(request));
     }
     */
+    bool requestCached = false;
+    requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached b4
     string savedResponse = cache->getValidCachedResponse(request);
     if(savedResponse != "") { // if saved there is something returned then saved response is cached data
         return savedResponse;
     }
-    else {
+    else if (requestCached){
         request->AddHeader("If-Modified-Since", cache->EntryLastModified(request)); // Do conditional get if saved response is not in cache
     }
     
@@ -292,7 +293,7 @@ string make_request(HttpRequest* request, Cache* cache)
             char buf[BUFFER_SIZE];
             memset(buf, 0, sizeof(buf));
             int i = recv(s, buf, sizeof(buf), 0);
-            response_data.append(buf, i);        
+            response_data.append(buf, i);
     
         }else{
             cout << "Timeout" << endl;
@@ -305,17 +306,29 @@ string make_request(HttpRequest* request, Cache* cache)
 
     HttpResponse response;
     response.ParseResponse(response_data.c_str(), response_data.length());
-
     cout<<"THE RESPONSE STATUS CODE IS"<<response.GetStatusCode()<<"!!!!";
-   // bool cacheIt= false;//decide whether response needs to be cached
+    bool cacheIt;//decide whether response needs to be cached
     
-    //cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
-    
+    cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
+    if(!cacheIt)
+    {
+        close(s);
+    delete[] req_string;
+        return cache->ReturnStoredResponse(request);
+
+    }
     // If there was any body code that was placed in the buffer add it to current body
     string body = response_data.substr(response_data.find("\r\n\r\n"));
     
     // Determine the content length
-    stringstream ss_body(response.FindHeader("Content-Length"));
+    string length;
+    if (response.FindHeader("Content-Length") != "")
+        length = response.FindHeader("Content-Length");
+    else
+        length = response.FindHeader("Content-length");
+    
+    stringstream ss_body(length);
+
     int content_length;
     ss_body >> content_length;
 
@@ -351,7 +364,8 @@ string make_request(HttpRequest* request, Cache* cache)
 
     close(s);
     delete[] req_string;
-/*
+    
+    /*
     if(!cacheIt || (requestCached))
     {
         
@@ -360,29 +374,23 @@ string make_request(HttpRequest* request, Cache* cache)
         cout<< cache->ReturnStoredResponse(request);
         cout<<"-------------------------------------------";
         return cache->ReturnStoredResponse(request);//simply return stored response from the cache
-        
     }
-*/
+    */
+
     // Append the body to the header
     response_data = response_data.substr(0, response_data.find("\r\n\r\n"));
     response_data.append(body);
     
     //if (response.FindHeader("Last-Modified")!="")
     {
-
         cout<<"storing response";
-
         cache->store(request, response_data);
-        pthread_mutex_unlock(&cache_mutex);
-
         
     }
     cout<<"---------------------------------------------\n";
         cout<< response_data;
         cout<<"-------------------------------------------";
     return response_data;
-    
-    
 }
 
 void* handle_connection(void* p)
