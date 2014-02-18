@@ -20,7 +20,7 @@
 #include <time.h>
 using namespace std;
 
-#define SERVER_PORT "14802" // TODO: Change to 14886
+#define SERVER_PORT "14803" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 5          // TODO: Change to 30 Timeout value for receiving requests from client
@@ -451,7 +451,7 @@ void* handle_connection(void* p)
         {
             request.ParseRequest(request_data.c_str(), request_data.length());
             
-            if (strcmp(request.FindHeader("Connection").c_str(), "close") == 0)
+            if ((strcmp(request.FindHeader("Connection").c_str(), "close") == 0) || (strcmp(request.GetVersion().c_str(),"1.0") == 0))
             {
                 persist = false;
             }

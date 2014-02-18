@@ -1,3 +1,25 @@
+HTTP-Proxy
+==========
+
+Summary
+=======
+Implemented an http-proxy that supports caching of results. 
+The proxy has a main function which will set up a socket and listen for active connections. From there once it receives a connection request the proxy will create a thread to handle the connections, passing in the connection information as well as the shared cache class, with the max number of connections set to 20 defined by the MAX_CONNECTIONS variable. Our cache class takes in as a key a string of the path name appended to the host name and stores a string of the response that the proxy obtained from the remote server. From here the proxy will read in the client's request and we used the select() function to handle timeouts and to only read when the socket file descriptor has data inside of it. 
+
+Using the select() method we are able to set up a timeout for persistent connections. In addition, we check to see if the header version is 1.0 because HTTP/1.0 does not support persistent connection. Our timeouts are defined in the variables at the top of http-proxy.cc TIMEOUT for the timeout of requests coming in from the client. We read in a request from the client by constantly reading in until we reach a '\r\n\r\n', which signifies the end of the HTTP request. In addition, we have a REMOTE_TIMEOUT variable defined at the top, which is a timeout on a response from a server. The way we read in the response data from the server is that we first read in the header by reading in everything until the '\r\n\r\n'. After reading in the header we obtain the Content-Length to determine how much more we have to read to obtain the body of the message. Note: Our Content-Length retrieval is not case sensitive and so we noticed that in the different test cases Content-Length was spelled Content-Length and Content-length. We have accomodated for these two variations in spelling, but any other variations of content-length capitalization will not succeed.In the case that Content-Length is not able to be retrieved or is not given we use the timeout REMOTE_TIMEOUT to determine when the remote server has stopped sending data to signify the end of the body.
+
+From here we enter the make_request() function, which first checks to see if there is a valid response inside of the cache so that we do not need to query the remote server. The cache first checks if the key matches the request. If it does we then check to see whether the data has expired and if it has not we simply return the information that was in the cache. If the data has expired then we send a conditional GET to the remote server to get the results. If the remote server responds with a 304 it means the data has not been modified and then we simply return the results in the cache. Otherwise we need to respond with the new information that the remote server responded with and update the cache. In the case where the request is not located in the cache at all we need to send a GET request to the remote server to obtain the results and then store the results inside of the cache. 
+
+In addition, because the cache is shared among the multiple threads and the STL map is not multithread safe we had to implement locking so that only one thread could access the cache at the same time. To do this we needed to used a pthread_mutex_lock for the cache. Then whenever a thread accessed information in the cache we would lock it so that no other thread could write and when a thread was writing to the cache we locked it so that no other thread could read or write to it. 
+
+Extra Credit:
+=============
+Used the select() function to handle reads and timeouts for persistent connections
+
+
+
+
+
 General
 =======
 
