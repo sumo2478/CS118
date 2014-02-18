@@ -1,6 +1,6 @@
-Project memebers: Collin Yeh, Alex Guo, Andre Hsu
+Project memebers: Collin Yen, Alex Guo, Andre Hsu
 
-Collin Yeh: Wrote all the code associated with communications with the client
+Collin Yen: Wrote all the code associated with communications with the client
 
 Functions: main, hand_connection, create_server_listener
 
