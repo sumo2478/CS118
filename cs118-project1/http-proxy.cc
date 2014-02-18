@@ -20,10 +20,10 @@
 #include <time.h>
 using namespace std;
 
-#define SERVER_PORT "14802" // TODO: Change to 14886
+#define SERVER_PORT "14813" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
-#define TIMEOUT 5          // TODO: Change to 30 Timeout value for receiving requests from client
+#define TIMEOUT 30          // TODO: Change to 30 Timeout value for receiving requests from client
 #define REMOTE_TIMEOUT 10
 class Cache;
 // Structure that is passed into the thread
@@ -243,14 +243,18 @@ string make_request(HttpRequest* request, Cache* cache)
         request->AddHeader("If-Modified-Since", cache->EntryLastModified(request));
     }
     */
+    pthread_mutex_lock(&cache_mutex);
     bool requestCached = false;
     requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached b4
     string savedResponse = cache->getValidCachedResponse(request);
+    pthread_mutex_unlock(&cache_mutex);
     if(savedResponse != "") { // if saved there is something returned then saved response is cached data
         return savedResponse;
     }
     else if (requestCached){
+        pthread_mutex_lock(&cache_mutex);
         request->AddHeader("If-Modified-Since", cache->EntryLastModified(request)); // Do conditional get if saved response is not in cache
+        pthread_mutex_unlock(&cache_mutex);
     }
     
     size_t l = request->GetTotalLength();
@@ -314,7 +318,10 @@ string make_request(HttpRequest* request, Cache* cache)
     {
         close(s);
     delete[] req_string;
-        return cache->ReturnStoredResponse(request);
+    pthread_mutex_lock(&cache_mutex);
+        string storedReturn =cache->ReturnStoredResponse(request);
+        pthread_mutex_unlock(&cache_mutex); 
+        return storedReturn;
 
     }
     // If there was any body code that was placed in the buffer add it to current body
@@ -384,7 +391,9 @@ string make_request(HttpRequest* request, Cache* cache)
     //if (response.FindHeader("Last-Modified")!="")
     {
         cout<<"storing response";
+        pthread_mutex_lock(&cache_mutex);
         cache->store(request, response_data);
+        pthread_mutex_unlock(&cache_mutex);
         
     }
     cout<<"---------------------------------------------\n";
