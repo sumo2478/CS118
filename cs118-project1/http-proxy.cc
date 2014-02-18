@@ -17,6 +17,7 @@
 
 #include <sstream>
 #include <map>
+#include <time.h>
 using namespace std;
 
 #define SERVER_PORT "14886" // TODO: Change to 14886
@@ -151,6 +152,7 @@ bool Cache::IsExpired(HttpRequest * hr) {
 
 
 string Cache::getValidCachedResponse(HttpRequest * hr) {
+
     string hostName = hr->GetHost();
     string pathName = hr->GetPath();
     string keyName = hostName + pathName;
