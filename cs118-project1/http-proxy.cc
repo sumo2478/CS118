@@ -194,6 +194,8 @@ string make_request(HttpRequest* request, Cache* cache)
     struct addrinfo *servinfo;       // will point to the results
     bool requestCached= false;
     bool expired= false;
+    pthread_mutex_init(&cache_mutex, NULL);
+    
     
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
@@ -269,7 +271,7 @@ string make_request(HttpRequest* request, Cache* cache)
 
     HttpResponse response;
     response.ParseResponse(response_data.c_str(), response_data.length());
-    cout<<"THE RESPONSE STATUS CODE IS"<<response.GetStatusCode()<<"!!!!";
+    cout<<"THE RESPONSE STATUS CODE IS "<<response.GetStatusCode();
     bool cacheIt= false;//decide whether response needs to be cached
     
     cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
@@ -333,7 +335,10 @@ string make_request(HttpRequest* request, Cache* cache)
     if (response.FindHeader("Last-Modified")!="")
     {
         cout<<"STORING RESPONSE: returning fresh response";
+        pthread_mutex_lock(&cache_mutex);
         cache->store(request, response_data);
+        pthread_mutex_unlock(&cache_mutex);
+
         
     }
     cout<<"---------------------------------------------\n";
