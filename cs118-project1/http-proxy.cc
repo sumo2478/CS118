@@ -20,7 +20,7 @@
 #include <time.h>
 using namespace std;
 
-#define SERVER_PORT "14813" // TODO: Change to 14886
+#define SERVER_PORT "15557" // TODO: Change to 14886
 #define MAX_CONNECTIONS 20  // Max number of connections allowed to the server
 #define BUFFER_SIZE 1024    // Buffer size that we read in
 #define TIMEOUT 30          // TODO: Change to 30 Timeout value for receiving requests from client
@@ -182,9 +182,6 @@ string Cache::ReturnStoredResponse(HttpRequest * hr) {
         return "";
 }
 
-
-
-// ANDRE
 // Returns response data as string if not expired
 // Returns empty string if expired/hasn't been cached/no expiration date
 string Cache::getValidCachedResponse(HttpRequest * hr) {
@@ -225,33 +222,26 @@ string Cache::getValidCachedResponse(HttpRequest * hr) {
 
 string make_request(HttpRequest* request, Cache* cache)
 {
-    cout << "trying to make request" << endl;
     int status;
     int s;
     struct addrinfo hints;
     struct addrinfo *servinfo;       // will point to the results
-    //bool requestCached= false;
     
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-    /*
-    requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached b4
-    
-    if(requestCached)
-    {
-        request->AddHeader("If-Modified-Since", cache->EntryLastModified(request));
-    }
-    */
+
     pthread_mutex_lock(&cache_mutex);
     bool requestCached = false;
     requestCached= cache->CacheEntryExists(request); //check if response for the request has been cached b4
     string savedResponse = cache->getValidCachedResponse(request);
     pthread_mutex_unlock(&cache_mutex);
+
     if(savedResponse != "") { // if saved there is something returned then saved response is cached data
         return savedResponse;
     }
-    else if (requestCached){
+
+    else if (requestCached) {
         pthread_mutex_lock(&cache_mutex);
         request->AddHeader("If-Modified-Since", cache->EntryLastModified(request)); // Do conditional get if saved response is not in cache
         pthread_mutex_unlock(&cache_mutex);
@@ -310,15 +300,15 @@ string make_request(HttpRequest* request, Cache* cache)
 
     HttpResponse response;
     response.ParseResponse(response_data.c_str(), response_data.length());
-    cout<<"THE RESPONSE STATUS CODE IS"<<response.GetStatusCode()<<"!!!!";
+    
     bool cacheIt;//decide whether response needs to be cached
     
     cacheIt= !(response.GetStatusCode()=="304");//only scenario we do not cache is if Not Modified is the Status Message
     if(!cacheIt)
     {
         close(s);
-    delete[] req_string;
-    pthread_mutex_lock(&cache_mutex);
+        delete[] req_string;
+        pthread_mutex_lock(&cache_mutex);
         string storedReturn =cache->ReturnStoredResponse(request);
         pthread_mutex_unlock(&cache_mutex); 
         return storedReturn;
@@ -372,33 +362,15 @@ string make_request(HttpRequest* request, Cache* cache)
     close(s);
     delete[] req_string;
     
-    /*
-    if(!cacheIt || (requestCached))
-    {
-        
-        cout<<"returns cached response";
-        cout<<"---------------------------------------------\n";
-        cout<< cache->ReturnStoredResponse(request);
-        cout<<"-------------------------------------------";
-        return cache->ReturnStoredResponse(request);//simply return stored response from the cache
-    }
-    */
-
     // Append the body to the header
     response_data = response_data.substr(0, response_data.find("\r\n\r\n"));
     response_data.append(body);
     
-    //if (response.FindHeader("Last-Modified")!="")
-    {
-        cout<<"storing response";
-        pthread_mutex_lock(&cache_mutex);
-        cache->store(request, response_data);
-        pthread_mutex_unlock(&cache_mutex);
+    
+    pthread_mutex_lock(&cache_mutex);
+    cache->store(request, response_data);
+    pthread_mutex_unlock(&cache_mutex);
         
-    }
-    cout<<"---------------------------------------------\n";
-        cout<< response_data;
-        cout<<"-------------------------------------------";
     return response_data;
 }
 
